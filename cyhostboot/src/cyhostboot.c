@@ -164,6 +164,36 @@ static CyBtldr_CommunicationsData serial_coms = {
 };
 
 
+static unsigned char hex_char(char c) {
+	if ('0' <= c && c <= '9') return (unsigned char)(c - '0');
+	if ('A' <= c && c <= 'F') return (unsigned char)(c - 'A' + 10);
+	if ('a' <= c && c <= 'f') return (unsigned char)(c - 'a' + 10);
+	return 0xFF;
+}
+
+static int hex_to_bin(const char* s, unsigned char * buff, int length) {
+	int result;
+	if (!s || !buff) {
+		return -1;
+	}
+	for (result = 0; *s; ++result) {
+		if (length <= 0) {
+			return -1;
+		}
+		unsigned char msn = hex_char(*s++);
+		if (msn == 0xFF) {
+			return -1;
+		}
+		unsigned char lsn = hex_char(*s++);
+		if (lsn == 0xFF) {
+			return -1;
+		}
+		*buff++ = (msn << 4) + lsn;
+		length--;
+	}
+	return result;
+}
+
 static void serial_progress_update(unsigned char arrayId, unsigned short rowNum)
 {
 	printf("Progress: array_id %d, row_num %d\n", arrayId, rowNum);
@@ -172,10 +202,20 @@ static void serial_progress_update(unsigned char arrayId, unsigned short rowNum)
 int main(int argc, char **argv)
 {
 	int ret, action = PROGRAM;
+	unsigned char security_key[6];
+	int use_security_key = 0;
 	const char *action_str = "programing";
 
 	if (cyhostboot_cmdline_parser(argc, argv, &args_info) != 0) {
 		return EXIT_FAILURE;
+	}
+
+	if (strlen(args_info.security_key_arg) > 0) {
+		if (hex_to_bin(args_info.security_key_arg, security_key, 6) != 6) {
+			fprintf(stderr, "Invalid security key: %s\n", args_info.security_key_arg);
+			return EXIT_FAILURE;
+		}
+		use_security_key = 1;
 	}
 
 	if (args_info.erase_given) {
@@ -190,7 +230,7 @@ int main(int argc, char **argv)
 		printf("Programing file %s\n", args_info.file_arg);
 
 	printf("Start %s on serial %s, baudrate %d\n", action_str, args_info.serial_arg, args_info.baudrate_arg);
-	ret = CyBtldr_RunAction(action, args_info.file_arg, NULL, 1, &serial_coms, serial_progress_update);
+	ret = CyBtldr_RunAction(action, args_info.file_arg, use_security_key? security_key : NULL, 1, &serial_coms, serial_progress_update);
 	if (ret != CYRET_SUCCESS) {
 		printf("%s failed: %d\n", action_str, ret);
 		return 1;
